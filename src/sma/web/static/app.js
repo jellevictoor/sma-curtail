@@ -38,7 +38,7 @@ let sharedTimeDomain = null;
 let pastGrid = [];
 let solarForecast = [];
 
-const CHART_MARGIN = { top: 14, right: 56, bottom: 22, left: 64 };
+const CHART_MARGIN = { top: 14, right: 16, bottom: 22, left: 64 };
 
 // --- state panel + banner ---------------------------------------------------
 
@@ -314,7 +314,6 @@ function renderPriceChart(prices) {
   const now = new Date(prices.now);
   const breakEvenEpex = prices.break_even_epex_eur_mwh;
   const enterBelow = prices.thresholds.enter_below_eur_per_kwh;
-  const exitAbove = prices.thresholds.exit_above_eur_per_kwh;
 
   const current = points.find(p => {
     const t = new Date(p.timestamp).getTime();
@@ -385,15 +384,14 @@ function renderPriceChart(prices) {
   sharedTimeDomain = d3.extent(data, d => d.t);
 
   const x = d3.scaleTime().domain(sharedTimeDomain).range([0, innerW]);
-  // Left axis spans both injection (often near zero / negative) AND consumption (~0.18 €/kWh).
+  // Single shared axis: injection ≈ EPEX − 0.015, so they belong on the same scale.
   const yInj = d3.scaleLinear()
     .domain(d3.extent([
       ...data.map(d => d.inj),
       ...data.map(d => d.cons),
-      enterBelow, exitAbove, 0,
+      ...data.map(d => d.epex),
+      enterBelow, 0,
     ])).nice().range([innerH, 0]);
-  const yEpex = d3.scaleLinear()
-    .domain(d3.extent([...data.map(d => d.epex), 0])).nice().range([innerH, 0]);
 
   const g = svg.append("g").attr("transform", `translate(${m.left},${m.top})`);
 
@@ -404,6 +402,13 @@ function renderPriceChart(prices) {
       .attr("width", innerW - x(futureStart)).attr("height", innerH);
   }
 
+  // Horizontal zone (price axis): everything below enter threshold loses money to export.
+  g.append("rect").attr("class", "curtail-zone")
+    .attr("x", 0).attr("y", yInj(enterBelow))
+    .attr("width", innerW)
+    .attr("height", Math.max(0, innerH - yInj(enterBelow)));
+
+  // Vertical bands (time axis): forecast windows where we'll curtail.
   const willCurtail = contiguousBands(data, d => d.inj < enterBelow);
   g.selectAll("rect.curtail-fc").data(willCurtail).join("rect")
     .attr("class", "curtail-fc")
@@ -412,16 +417,20 @@ function renderPriceChart(prices) {
     .attr("height", innerH);
 
   for (const [val, klass, label] of [
-    [enterBelow, "threshold-enter", `enter < ${enterBelow}`],
-    [exitAbove,  "threshold-exit",  `exit > ${exitAbove}`],
+    [enterBelow, "threshold-enter", `enter < ${enterBelow.toFixed(4)}`],
     [0,          "threshold-zero",  "break-even"],
   ]) {
     g.append("line").attr("class", klass)
       .attr("x1", 0).attr("x2", innerW)
       .attr("y1", yInj(val)).attr("y2", yInj(val));
-    g.append("text").attr("class", "threshold-label")
-      .attr("x", innerW - 4).attr("y", yInj(val) - 3)
-      .attr("text-anchor", "end").text(label);
+    const lblG = g.append("g").attr("transform", `translate(6, ${yInj(val) - 4})`);
+    const txt = lblG.append("text").attr("class", "threshold-label").text(label);
+    const bb = txt.node().getBBox();
+    lblG.insert("rect", "text")
+      .attr("class", "threshold-label-bg")
+      .attr("x", bb.x - 3).attr("y", bb.y - 1)
+      .attr("width", bb.width + 6).attr("height", bb.height + 2)
+      .attr("rx", 2);
   }
 
   if (now >= data[0].t && now <= data[data.length - 1].t) {
@@ -435,7 +444,7 @@ function renderPriceChart(prices) {
 
   const injLine  = d3.line().defined(d => d.inj  != null).x(d => x(d.t)).y(d => yInj(d.inj)).curve(d3.curveMonotoneX);
   const consLine = d3.line().defined(d => d.cons != null).x(d => x(d.t)).y(d => yInj(d.cons)).curve(d3.curveMonotoneX);
-  const epexLine = d3.line().defined(d => d.epex != null).x(d => x(d.t)).y(d => yEpex(d.epex)).curve(d3.curveMonotoneX);
+  const epexLine = d3.line().defined(d => d.epex != null).x(d => x(d.t)).y(d => yInj(d.epex)).curve(d3.curveMonotoneX);
 
   g.append("path").datum(data).attr("class", "line-epex")       .attr("d", epexLine);
   g.append("path").datum(data).attr("class", "line-consumption").attr("d", consLine);
@@ -445,8 +454,6 @@ function renderPriceChart(prices) {
     .call(d3.axisBottom(x).ticks(8));
   g.append("g").attr("class", "axis")
     .call(d3.axisLeft(yInj).tickFormat(d => d.toFixed(3)));
-  g.append("g").attr("class", "axis").attr("transform", `translate(${innerW},0)`)
-    .call(d3.axisRight(yEpex).tickFormat(d => d.toFixed(3)));
 
   attachTooltip({
     svg, gInner: g, innerW, innerH, x, data,
