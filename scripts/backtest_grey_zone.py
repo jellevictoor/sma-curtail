@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC
 
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient
@@ -107,7 +107,7 @@ from(bucket: "energy_prices")
 
         by_hod: dict[int, int] = defaultdict(int)
         for t, *_ in grey:
-            by_hod[t.astimezone(timezone.utc).hour] += 1
+            by_hod[t.astimezone(UTC).hour] += 1
         print("  Distribution by hour-of-day (UTC):")
         for h in range(24):
             n = by_hod.get(h, 0)
@@ -133,9 +133,9 @@ from(bucket: "energy_prices")
         print(f"  consumption range: {min(p[3] for p in paid):+.4f} → {max(p[3] for p in paid):+.4f} €/kWh")
         print()
         by_day: dict[str, list] = defaultdict(list)
-        for t, e, i, c in paid:
+        for t, e, _i, c in paid:
             by_day[t.strftime("%Y-%m-%d")].append((t, e, c))
-        print(f"  Days with paid-import:")
+        print("  Days with paid-import:")
         for day in sorted(by_day):
             entries = by_day[day]
             min_epex = min(e for _, e, _ in entries)
@@ -176,7 +176,6 @@ union(tables: [delivered, returned])
         # Bucket grey slots into hourly keys, average grid_w per slot.
         export_kwh_grey = 0.0
         loss_eur_grey  = 0.0  # had we kept exporting at injection price
-        save_eur_grey  = 0.0  # what match-load saved by NOT exporting
         slots_with_data = 0
         for t, _, inj, _ in grey:
             key = t.strftime("%Y-%m-%dT%H")
@@ -191,7 +190,7 @@ union(tables: [delivered, returned])
         print(f"Grey-zone slots with grid data: {slots_with_data}/{len(grey)}")
         print(f"  Exported during grey zone: {export_kwh_grey:.1f} kWh")
         print(f"  Cost of that export at injection prices: {loss_eur_grey:.2f} €")
-        print(f"  → that's the money you would have saved with match-load instead.")
+        print("  → that's the money you would have saved with match-load instead.")
         print()
 
     if paid and grid_by_hour:

@@ -23,6 +23,7 @@ sma-web = "sma.web.server:run"
 dev = [
     "pytest>=8.3,<10",
     "python-dotenv>=1.0,<2",
+    "ruff>=0.7,<0.10",
 ]
 
 [build-system]
@@ -35,3 +36,20 @@ packages = ["src/sma"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+# Pyflakes (F) catches use-before-assign / unbound locals like the one that
+# slipped past pytest. PyE (E) is style. UP for upgrade hints. B for bugbears.
+select = ["F", "E", "W", "UP", "B"]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "E701",   # `if x: return` one-liners — used deliberately for guard clauses
+    "E702",   # `call(); return True` one-liners — used in tiny try/except wrappers
+    "E731",   # lambda assignment — fine for tiny callbacks
+    "B008",   # function call in default arg — Pydantic/FastAPI idiom
+]

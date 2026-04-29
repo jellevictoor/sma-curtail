@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from sma.curtailment import Decision, RailCheck
 from sma.web.state import History, Sample
@@ -19,7 +19,7 @@ def _decision(curtail: bool) -> Decision:
 
 def _sample(curtail: bool, price: float, pv: float, grid: float) -> Sample:
     return Sample(
-        timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
         curtail=curtail,
         target_percent=0 if curtail else 100,
         target_watts=0 if curtail else 4000,

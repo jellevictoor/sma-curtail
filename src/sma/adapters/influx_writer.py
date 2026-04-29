@@ -5,7 +5,7 @@ a distinct measurement: `sma_curtail`. Fields mirror the Sample dataclass.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -29,7 +29,7 @@ class InfluxSampleWriter:
                      grid_w: float | None,
                      home_w: float | None,
                      charging: bool) -> None:
-        point = Point("sma_curtail").time(datetime.now(timezone.utc), WritePrecision.S)
+        point = Point("sma_curtail").time(datetime.now(UTC), WritePrecision.S)
         point = point.field("curtail", 1 if curtail else 0)
         point = point.field("target_percent", int(target_percent))
         if injection_price is not None: point = point.field("injection_eur_kwh", float(injection_price))

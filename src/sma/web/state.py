@@ -5,8 +5,8 @@ import logging
 import threading
 from collections import deque
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import datetime, UTC
+from collections.abc import Iterable
 
 from sma.curtailment import Decision
 
@@ -44,7 +44,7 @@ class AppLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            ts = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(timespec="seconds")
+            ts = datetime.fromtimestamp(record.created, tz=UTC).isoformat(timespec="seconds")
             self._buffer.append(LogEntry(
                 timestamp=ts,
                 level=record.levelname,
@@ -78,7 +78,7 @@ class Sample:
             home_w: float | None,
             charging: bool) -> Sample:
         return Sample(
-            timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
             curtail=decision.curtail,
             target_percent=decision.target_percent,
             target_watts=decision.target_watts,

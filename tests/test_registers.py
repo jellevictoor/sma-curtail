@@ -1,7 +1,7 @@
 import pytest
 
 from sma.control import u32_to_words
-from sma.registers import REGISTERS, DataType, Register, decode
+from sma.registers import REGISTERS, decode
 
 BY_NAME = {r.name: r for r in REGISTERS}
 

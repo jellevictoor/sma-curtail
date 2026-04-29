@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from influxdb_client import InfluxDBClient
 
@@ -85,7 +85,7 @@ from(bucket: "{self._bucket}")
 
     def _latest_epex_eur_mwh(self) -> float | None:
         # Look back 2 hours to be safe across the quarter-hour boundary.
-        start = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start = (datetime.now(UTC) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         # Try price_eur_mwh first (canonical per ecopower-tariffs).
         for field, scale in (("price_eur_mwh", 1.0), ("price_eur_kwh", 1000.0)):
             flux = f'''

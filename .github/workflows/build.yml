@@ -21,6 +21,9 @@ jobs:
         with:
           version: "0.5.31"
       - run: uv sync --frozen
+      # Lint first — pyflakes (F) catches use-before-assign / unbound locals
+      # that pytest can't surface for orchestration code without integration tests.
+      - run: uv run ruff check src/ tests/ scripts/
       - run: uv run pytest
 
   docker:

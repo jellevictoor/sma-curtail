@@ -11,7 +11,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from threading import Lock
 
@@ -37,7 +37,6 @@ from sma.web.state import (
     AppLogHandler,
     History,
     LogBuffer,
-    LogEntry,
     Sample,
     decision_to_rails,
     history_to_payload,
@@ -415,7 +414,7 @@ def _forecast_curtail_hours(s: AppState) -> float | None:
     points = s._prices_cache.value or []
     if not points:
         return None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     enter = s.policy.enter_below_eur_per_kwh
     future_below = sum(1 for p in points
                        if p.timestamp > now and p.injection_eur_kwh < enter)
@@ -680,7 +679,7 @@ async def api_prices(request: Request):
     s = _state(request)
     points = await asyncio.to_thread(s.cached_prices)
     return JSONResponse({
-        "now": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "now": datetime.now(UTC).isoformat(timespec="seconds"),
         "break_even_epex_eur_mwh": break_even_epex_eur_mwh(),
         "thresholds": {
             "enter_below_eur_per_kwh": s.policy.enter_below_eur_per_kwh,
@@ -702,7 +701,7 @@ async def healthz(request: Request):
     sample = s.last_sample
     if sample is None:
         return JSONResponse({"status": "starting"}, status_code=503)
-    age_s = (datetime.now(timezone.utc) - datetime.fromisoformat(sample.timestamp)).total_seconds()
+    age_s = (datetime.now(UTC) - datetime.fromisoformat(sample.timestamp)).total_seconds()
     healthy = age_s < (s.config.tick_seconds * 5)
     return JSONResponse({
         "status": "ok" if healthy else "stale",
