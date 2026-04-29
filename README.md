@@ -128,36 +128,29 @@ uv run python scripts/backtest_grey_zone.py   # regime distribution + recovered 
 
 Config in `.env` (see `.env.example`).
 
-## Deploy to a Raspberry Pi via container registry
+## Deploy to a Raspberry Pi 5
 
-Multi-arch build (amd64 build host → arm64 RPi 3/4/5 with 64-bit OS) and push:
+Build + push happens in **GitHub Actions** (`.github/workflows/build.yml`):
 
-```bash
-# one-time: enable buildx with multi-arch support
-docker buildx create --name multi --use --bootstrap
+- runs `pytest` on every PR + push to main
+- on push to main / tags, cross-builds `linux/arm64` and publishes to
+  `ghcr.io/jellevictoor/sma-curtail` with tags `latest`, `main`, and the
+  short SHA (plus semver tags if you push a `v*` tag).
 
-# replace ghcr.io/<you>/sma-curtail with your registry path
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  --tag      ghcr.io/<you>/sma-curtail:latest \
-  --tag      ghcr.io/<you>/sma-curtail:$(git rev-parse --short HEAD) \
-  --push .
-```
+Make the package public once after the first build (GitHub → repo
+→ Packages → sma-curtail → Package settings → Change visibility → Public).
+Otherwise the RPi needs a token to pull.
 
 On the RPi, after copying `.env` and `docker-compose.yml`:
 
 ```bash
-# point compose at the published image instead of building locally
-SMA_IMAGE=ghcr.io/<you>/sma-curtail:latest docker compose pull
-SMA_IMAGE=ghcr.io/<you>/sma-curtail:latest docker compose up -d
+# pull + run from the registry — no local build, no source code on the RPi
+SMA_IMAGE=ghcr.io/jellevictoor/sma-curtail:latest docker compose pull
+SMA_IMAGE=ghcr.io/jellevictoor/sma-curtail:latest docker compose up -d
 ```
 
-(Or set `image:` in `docker-compose.yml` and remove `build: .` for the RPi-side
-copy.)
-
-For RPi 2 / Zero-W (32-bit ARMv7), drop the python base image to
-`python:3.12-slim` and add `linux/arm/v7` to `--platform` — some 3.13 wheels
-aren't published for armv7 yet.
+To pin a specific build instead of the rolling `latest`, use the short-SHA
+tag (e.g. `ghcr.io/jellevictoor/sma-curtail:299f402`).
 
 ## Security
 
