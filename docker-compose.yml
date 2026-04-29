@@ -1,0 +1,25 @@
+services:
+  sma-curtail:
+    # Local dev:  `docker compose up --build` builds + tags `sma-curtail:local`.
+    # RPi / pull: `SMA_IMAGE=ghcr.io/<you>/sma-curtail:latest docker compose pull`
+    #             `SMA_IMAGE=ghcr.io/<you>/sma-curtail:latest docker compose up -d`
+    image: ${SMA_IMAGE:-sma-curtail:local}
+    build: .
+    container_name: sma-curtail
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
+    # If you ever deploy this on the SAME Linux host as Traefik (i.e., on the
+    # box that's actually serving evcc.victoor.io / influx.victoor.io / etc.),
+    # uncomment + set TRAEFIK_HOST in .env to the host's LAN IP. That lets the
+    # container reach Traefik on the LAN interface directly, sidestepping the
+    # NAT-hairpin issue you'd otherwise hit by going out via the public IP.
+    #
+    # On any other machine (Mac dev box, separate server) leave this commented
+    # — standard DNS + outbound NAT will reach the public hostnames the same
+    # way the host itself does.
+    #extra_hosts:
+    #  - "evcc.victoor.io:${TRAEFIK_HOST}"
+    #  - "influx.victoor.io:${TRAEFIK_HOST}"
+    #  - "mqtt.victoor.io:${TRAEFIK_HOST}"

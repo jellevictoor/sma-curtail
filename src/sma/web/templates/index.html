@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sma-curtail</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Boot theme as early as possible to avoid a flash of wrong colors.
+  (function () {
+    const saved = localStorage.getItem("theme");
+    const sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const t = saved || (sysDark ? "dark" : "light");
+    if (t === "dark") document.documentElement.classList.add("dark");
+  })();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+  /* --- theme variables --------------------------------------------------- */
+  :root {
+    color-scheme: light;
+    --bg-app:        #f8fafc;
+    --bg-panel:      #ffffff;
+    --bg-future:     #f1f5f9;
+    --border:        #e2e8f0;
+    --grid-line:     #f1f5f9;
+    --text-primary:  #0f172a;
+    --text-secondary:#475569;
+    --text-muted:    #94a3b8;
+    --selection:     #f59e0b40;
+    --accent-curtail:#be123c;
+    --accent-produce:#047857;
+    --accent-price:  #b45309;
+    --accent-epex:   #4338ca;
+    --accent-pv:     #059669;
+    --accent-grid:   #0284c7;
+    --accent-consumption:#0d9488;
+    --accent-curtail-soft:#fda4af;
+  }
+  html.dark {
+    color-scheme: dark;
+    --bg-app:        #0a0f1c;
+    --bg-panel:      #0f172a;
+    --bg-future:     #0a1224;
+    --border:        #1e293b;
+    --grid-line:     #182032;
+    --text-primary:  #e2e8f0;
+    --text-secondary:#94a3b8;
+    --text-muted:    #64748b;
+    --selection:     #f59e0b30;
+    --accent-curtail:#fda4af;
+    --accent-produce:#6ee7b7;
+    --accent-price:  #fcd34d;
+    --accent-epex:   #a5b4fc;
+    --accent-pv:     #34d399;
+    --accent-grid:   #38bdf8;
+    --accent-consumption:#5eead4;
+    --accent-curtail-soft:#fb7185;
+  }
+
+  html, body { background: var(--bg-app); }
+  body {
+    color: var(--text-primary);
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    font-feature-settings: "ss01", "cv01";
+  }
+  ::selection { background: var(--selection); }
+
+  /* --- semantic utility classes ----------------------------------------- */
+  .panel    { background: var(--bg-panel); border: 1px solid var(--border); }
+  .panel-h  { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+  .num      { font-variant-numeric: tabular-nums; }
+  .text-pri { color: var(--text-primary); }
+  .text-sec { color: var(--text-secondary); }
+  .text-muted-s { color: var(--text-muted); }
+  .border-base { border-color: var(--border) !important; }
+  .text-curtail { color: var(--accent-curtail); }
+  .text-produce { color: var(--accent-produce); }
+  .text-price   { color: var(--accent-price); }
+  .text-epex    { color: var(--accent-epex); }
+  .bg-curtail   { background: var(--accent-curtail); }
+  .bg-produce   { background: var(--accent-produce); }
+  .border-l-curtail { border-left-color: var(--accent-curtail); }
+  .border-l-produce { border-left-color: var(--accent-produce); }
+  .border-l-muted   { border-left-color: var(--text-muted); }
+
+  /* --- chart styles ------------------------------------------------------ */
+  svg .axis text  { font-size: 10px; fill: var(--text-muted); }
+  svg .axis path,
+  svg .axis line  { stroke: var(--border); }
+  svg .grid line  { stroke: var(--grid-line); stroke-dasharray: 2,2; }
+  .future-region  { fill: var(--bg-future); }
+  .now-line       { stroke: var(--text-primary); stroke-width: 1.5; }
+  .now-label      { fill: var(--text-primary); font-size: 10px; }
+  .zero-line      { stroke: var(--border); stroke-dasharray: 3,3; }
+  .line-pv        { stroke: var(--accent-pv);    fill: none; stroke-width: 1.75; }
+  .line-grid      { stroke: var(--accent-grid);  fill: none; stroke-width: 1.75; }
+  .line-injection { stroke: var(--accent-price); fill: none; stroke-width: 1.75; }
+  .line-consumption{stroke: var(--accent-consumption); fill: none; stroke-width: 1.5; opacity: 0.85; }
+  .line-epex      { stroke: var(--accent-epex);  fill: none; stroke-width: 1.25; opacity: 0.85; }
+  .text-consumption{ color: var(--accent-consumption); }
+  .threshold-enter{ stroke: var(--accent-curtail);  stroke-width: 1; stroke-dasharray: 4,3; opacity: 0.7; }
+  .threshold-exit { stroke: var(--accent-produce);  stroke-width: 1; stroke-dasharray: 4,3; opacity: 0.7; }
+  .threshold-zero { stroke: var(--text-muted);      stroke-width: 1; stroke-dasharray: 4,3; opacity: 0.7; }
+  .threshold-label{ font-size: 9px; fill: var(--text-secondary); }
+  .curtail-band   { fill: var(--text-muted); opacity: 0.18; }
+  .curtail-fc     { fill: var(--accent-curtail-soft); opacity: 0.30; }
+
+  /* --- energy bar (evcc-style) ----------------------------------------- */
+  .energy-bar { display: flex; flex-direction: column; gap: 6px; }
+  .energy-row { display: flex; align-items: center; min-height: 28px; }
+  .energy-cell {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-grow: 0; flex-basis: 0; flex-shrink: 1; min-width: 0;
+    transition: flex-grow 0.6s ease-out, opacity 0.3s;
+    overflow: hidden; white-space: nowrap;
+  }
+  .energy-cell.idle { flex-grow: 0 !important; opacity: 0; }
+  .energy-icon  { font-size: 18px; line-height: 1; }
+  .energy-watts { font-size: 11px; color: var(--text-secondary); }
+
+  .energy-bar-row {
+    display: flex; height: 36px;
+    border-radius: 6px; overflow: hidden; background: var(--border);
+  }
+  .energy-segment {
+    display: flex; align-items: center; justify-content: center;
+    flex-grow: 0; flex-basis: 0; flex-shrink: 1;
+    color: white; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+    transition: flex-grow 0.6s ease-out, background 0.3s;
+    min-width: 0; overflow: hidden;
+  }
+  .energy-segment.idle { flex-grow: 0 !important; }
+  /* destination colours: green = staying in the house, amber = going out to grid (export),
+     sky = coming in from the grid (import). Matches the colour vocabulary used elsewhere. */
+  .seg-self   { background: var(--accent-pv); }       /* self-consumed (PV → home, or grid → home) */
+  .seg-export { background: var(--accent-price); }    /* exporting to grid */
+  .seg-import { background: var(--accent-grid); }     /* importing from grid (only visible when net importing) */
+
+  /* sink "out-of-bar" cells get a faint border to show they're sinks not segments */
+  .snk-grid { color: var(--accent-grid); }
+  .src-grid { color: var(--accent-grid); }
+  .src-pv   { color: var(--accent-pv); }
+  .snk-home { color: var(--text-primary); }
+
+  /* --- collapsible details ---------------------------------------------- */
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸"; color: var(--text-muted); margin-right: 6px; }
+  details[open] > summary::before { content: "▾"; }
+
+  /* --- toggle ------------------------------------------------------------ */
+  .theme-toggle {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+</style>
+</head>
+<body>
+<main class="max-w-7xl mx-auto p-4 space-y-3">
+
+  <!-- top bar -->
+  <header class="flex items-baseline justify-between text-xs">
+    <span class="text-muted-s">
+      <span class="text-pri font-semibold">sma-curtail</span> · jelle@victoor.io · <span id="header-tick">—s tick</span>
+    </span>
+    <span class="flex items-center gap-3 text-muted-s">
+      <span id="evcc-status"     class="text-curtail" style="display:none">⚠ evcc unreachable</span>
+      <span id="inverter-status" class="text-curtail" style="display:none">⚠ inverter unreachable</span>
+      <span><span id="updated" class="text-pri num">—</span> · <span id="sample-count">0</span> samples buffered</span>
+      <button id="theme-toggle" class="theme-toggle" title="Toggle theme">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-label">dark</span>
+      </button>
+    </span>
+  </header>
+
+  <!-- compact status strip -->
+  <section id="banner" class="panel rounded px-4 py-3 flex items-center gap-3 border-l-4 border-l-muted text-sm">
+    <span id="status-dot" class="w-2 h-2 rounded-full" style="background: var(--text-muted)"></span>
+    <span id="status-label" class="font-semibold tracking-wide text-pri">connecting…</span>
+    <span id="status-pct" class="num text-muted-s">—%</span>
+    <span id="status-summary" class="text-sec flex-1 truncate">waiting for first tick</span>
+    <span id="status-evcc" class="text-[11px] text-muted-s shrink-0"></span>
+  </section>
+
+  <!-- price math (collapsible — educational; tucked away by default) -->
+  <details class="panel rounded">
+    <summary class="p-4 flex items-baseline justify-between gap-2 select-none">
+      <span class="panel-h">
+        price math · why curtail below
+        <span class="text-price font-semibold normal-case">0.0153 €/kWh</span>
+        <span class="text-muted-s normal-case">(= 15.31 €/MWh)</span>
+      </span>
+      <span class="text-[11px] text-muted-s">click to expand · formulas + live substitution</span>
+    </summary>
+    <div class="px-5 pb-5 pt-4 border-t border-base">
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">ecopower formula</div>
+        <div class="leading-relaxed">
+          <div class="text-sec mb-1">net injection (€/kWh) =</div>
+          <div class="text-lg text-price">0.98 × EPEX − 0.015</div>
+        </div>
+        <div class="text-xs text-muted-s mt-3 leading-relaxed">
+          EPEX = day-ahead spot price for BE, fixed per 15-min slot. The
+          <span class="text-pri">0.98</span> covers Ecopower's market spread,
+          the <span class="text-pri">−0.015</span> is their fixed handling deduction.
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">break-even derivation</div>
+<pre class="text-pri leading-snug text-xs whitespace-pre">set injection = 0
+0.98 · X − 0.015 = 0
+0.98 · X         = 0.015
+        X        = 0.015 / 0.98
+        X        = <span class="text-price font-semibold">0.0153 €/kWh</span>
+                  <span class="text-muted-s">(= 15.31 €/MWh)</span></pre>
+        <div class="text-xs text-muted-s mt-3 leading-relaxed">
+          Below this price, every kWh you push to the grid earns negative money.
+          <span class="text-pri">That's why 15 is the cutoff.</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">live, right now</div>
+<pre class="text-pri leading-snug text-xs whitespace-pre">EPEX now  = <span id="pm-epex" class="text-epex">—</span>
+injection = 0.98 · <span id="pm-epex2" class="text-epex">—</span> − 0.015
+          = <span id="pm-step">—</span> − 0.015
+          = <span id="pm-result" class="font-semibold">—</span></pre>
+        <div id="pm-verdict" class="text-xs mt-3 leading-relaxed">…</div>
+      </div>
+    </div>
+
+    <hr class="my-5 border-base" />
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">consumption formula (Fluvius West, residential tier 1)</div>
+        <div class="leading-relaxed">
+          <div class="text-sec mb-1">consumption (€/kWh) =</div>
+<pre class="text-pri leading-snug text-xs whitespace-pre">  1.02 · EPEX                 <span class="text-muted-s">← Ecopower energy</span>
++ 0.004                       <span class="text-muted-s">← + fixed</span>
++ 0.011                       <span class="text-muted-s">← GSC</span>
++ 0.00392                     <span class="text-muted-s">← WKK</span>
++ 0.0631937                   <span class="text-muted-s">← afnametarief</span>
++ 0.0019261                   <span class="text-muted-s">← bijdrage energie</span>
++ 0.04748                     <span class="text-muted-s">← bijzondere accijns</span>
+─────────────────────────
+= <span class="text-consumption font-semibold">1.02 · EPEX + 0.1315</span></pre>
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">why both prices matter</div>
+        <div class="text-xs text-sec leading-relaxed">
+          <p class="mb-2">
+            <span class="text-consumption">Consumption</span> is what the grid charges you when you import.
+            It's almost flat (~<span class="text-pri">0.1315 €/kWh</span> baseline) because most of it is
+            taxes and network fees, with a tiny EPEX-linked component.
+          </p>
+          <p>
+            The asymmetry between
+            <span class="text-price">injection</span> (≈ EPEX − 0.015) and
+            <span class="text-consumption">consumption</span> (≈ EPEX + 0.1315)
+            is what powers the <span class="text-pri">economic rail</span> — when the home is consuming, even at deeply
+            negative spot, self-consumption beats curtailment because we'd otherwise be importing at this price.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-muted-s mb-2">live, right now</div>
+<pre class="text-pri leading-snug text-xs whitespace-pre">EPEX now    = <span id="pm-c-epex" class="text-epex">—</span>
+consumption = 1.02 · <span id="pm-c-epex2" class="text-epex">—</span> + 0.1315
+            = <span id="pm-c-step">—</span> + 0.1315
+            = <span id="pm-c-result" class="text-consumption font-semibold">—</span></pre>
+        <div id="pm-c-spread" class="text-xs mt-3 leading-relaxed">…</div>
+      </div>
+    </div>
+
+    </div>
+  </details>
+
+  <!-- live numbers (2 columns: power + pricing/economics) -->
+  <section class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+    <div class="panel rounded p-4">
+      <div class="panel-h mb-3">energy flow</div>
+
+      <div class="energy-bar">
+        <!-- sources (top): PV always; Grid only when importing -->
+        <div class="energy-row" id="energy-sources">
+          <div class="energy-cell src-pv">
+            <span class="energy-icon">☀</span>
+            <span class="energy-watts num" id="src-pv-w">— W</span>
+          </div>
+          <div class="energy-cell src-grid">
+            <span class="energy-icon">⚡</span>
+            <span class="energy-watts num" id="src-grid-in-w">— W</span>
+          </div>
+        </div>
+
+        <!-- the bar — segments coloured by DESTINATION (where the energy is going) -->
+        <div class="energy-bar-row">
+          <div class="energy-segment seg-self"   id="seg-self">
+            <span class="num" id="seg-self-w"></span>
+          </div>
+          <div class="energy-segment seg-export" id="seg-export">
+            <span class="num" id="seg-export-w"></span>
+          </div>
+          <div class="energy-segment seg-import" id="seg-import">
+            <span class="num" id="seg-import-w"></span>
+          </div>
+        </div>
+
+        <!-- sinks (bottom): Home always; Grid only when exporting -->
+        <div class="energy-row" id="energy-sinks">
+          <div class="energy-cell snk-home">
+            <span class="energy-icon">⌂</span>
+            <span class="energy-watts num" id="snk-home-w">— W</span>
+          </div>
+          <div class="energy-cell snk-grid">
+            <span class="energy-icon">⚡</span>
+            <span class="energy-watts num" id="snk-grid-out-w">— W</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel rounded p-4">
+      <div class="panel-h mb-2">pricing & economics</div>
+      <dl class="space-y-1 text-sm">
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">injection (net)</dt>
+          <dd class="num text-price"><span id="m-price">—</span></dd>
+        </div>
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">consumption</dt>
+          <dd class="num text-consumption"><span id="p-consumption">—</span></dd>
+        </div>
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">EPEX day-ahead</dt>
+          <dd class="num text-epex"><span id="p-epex">—</span></dd>
+        </div>
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">break-even EPEX</dt>
+          <dd class="num text-muted-s"><span id="p-breakeven">—</span></dd>
+        </div>
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">forecast curtail ahead</dt>
+          <dd class="num text-curtail"><span id="p-curtail-hours">—</span></dd>
+        </div>
+        <div class="flex justify-between border-b border-base pb-1">
+          <dt class="text-sec">today · grid bill</dt>
+          <dd class="num">
+            <span id="m-bill" class="text-pri">—</span>
+            <span class="text-[10px] text-muted-s ml-1">
+              (cost <span id="m-cost" class="num text-curtail">—</span> ·
+              earn <span id="m-earn" class="num text-produce">—</span>)
+            </span>
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-sec">today · curtail net profit</dt>
+          <dd class="num">
+            <span id="m-net" class="text-pri">—</span>
+            <span class="text-[10px] text-muted-s ml-1">
+              (saved <span id="m-saved" class="num text-produce">—</span> ·
+              lost <span id="m-lost" class="num text-curtail">—</span>)
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+  </section>
+
+  <!-- decision rails -->
+  <section class="panel rounded p-4">
+    <div class="panel-h mb-2">decision rails — short-circuit, top to bottom</div>
+    <ul id="rails" class="text-sm divide-y border-base"></ul>
+  </section>
+
+  <!-- price chart -->
+  <section class="panel rounded p-4">
+    <div class="flex items-baseline justify-between mb-2">
+      <div class="panel-h">pricing · -24h ─── now ─── +30h</div>
+      <div class="text-[11px] text-muted-s flex gap-3 flex-wrap">
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-price)"></span>injection €/kWh</span>
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-consumption)"></span>consumption €/kWh</span>
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-epex)"></span>EPEX €/kWh</span>
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-curtail-soft); opacity: 0.6"></span>forecast curtail</span>
+        <span><span class="inline-block w-2 align-middle mr-1" style="border-left: 2px solid var(--text-primary)">&nbsp;</span>now</span>
+      </div>
+    </div>
+    <svg id="chart-prices" width="100%" height="280"></svg>
+  </section>
+
+  <!-- power chart -->
+  <section class="panel rounded p-4">
+    <div class="flex items-baseline justify-between mb-2">
+      <div class="panel-h">power flow · 24h actuals + live</div>
+      <div class="text-[11px] text-muted-s flex gap-3 flex-wrap">
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-pv)"></span>PV W</span>
+        <span><span class="inline-block w-3 h-0 align-middle mr-1" style="border-top: 2px dashed var(--accent-pv); opacity: 0.7"></span>PV forecast</span>
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-grid)"></span>grid W (− = export)</span>
+        <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--text-muted); opacity: 0.4"></span>actually curtailed</span>
+      </div>
+    </div>
+    <svg id="chart-power" width="100%" height="240"></svg>
+  </section>
+
+  <!-- activity log (collapsible) -->
+  <details class="panel rounded">
+    <summary class="p-4 flex items-baseline justify-between gap-2 select-none">
+      <span class="panel-h">activity log</span>
+      <span class="text-[11px] text-muted-s">most recent first · click to expand</span>
+    </summary>
+    <ul id="log" class="px-5 pb-5 pt-2 border-t border-base text-xs space-y-1 max-h-96 overflow-auto"></ul>
+  </details>
+
+  <!-- footer policy -->
+  <footer id="policy" class="text-[11px] text-muted-s text-center">policy: …</footer>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

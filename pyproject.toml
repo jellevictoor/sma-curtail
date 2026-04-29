@@ -1,0 +1,37 @@
+[project]
+name = "sma"
+version = "0.1.0"
+description = "Curtail an SMA Sunny Boy inverter when Ecopower injection price goes negative"
+requires-python = ">=3.11,<3.14"
+# Upper bounds are deliberate. We pin against silent jumps to brand-new releases
+# (supply-chain risk) — the lockfile is the canonical source of truth.
+# Run `uv tool run --from pip-audit pip-audit -r <(uv export --no-dev)` before bumps.
+dependencies = [
+    "pymodbus>=3.7,<3.8",
+    "influxdb-client>=1.46,<1.51",
+    "fastapi>=0.115,<0.137",
+    "uvicorn[standard]>=0.32,<0.47",
+    "jinja2>=3.1.4,<3.2",
+    "paho-mqtt>=2.1.0,<3",
+]
+
+[project.scripts]
+sma = "sma.__main__:main"
+sma-web = "sma.web.server:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<10",
+    "python-dotenv>=1.0,<2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sma"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
