@@ -416,15 +416,13 @@ function renderPriceChart(prices) {
     .attr("width", d => Math.max(2, x(d.end) - x(d.start)))
     .attr("height", innerH);
 
-  for (const [val, klass, label] of [
-    [enterBelow, "threshold-enter", `enter < ${enterBelow.toFixed(4)}`],
-    [0,          "threshold-zero",  "break-even"],
-  ]) {
-    g.append("line").attr("class", klass)
-      .attr("x1", 0).attr("x2", innerW)
-      .attr("y1", yInj(val)).attr("y2", yInj(val));
-    const lblG = g.append("g").attr("transform", `translate(6, ${yInj(val) - 4})`);
-    const txt = lblG.append("text").attr("class", "threshold-label").text(label);
+  g.append("line").attr("class", "threshold-enter")
+    .attr("x1", 0).attr("x2", innerW)
+    .attr("y1", yInj(enterBelow)).attr("y2", yInj(enterBelow));
+  {
+    const lblG = g.append("g").attr("transform", `translate(6, ${yInj(enterBelow) - 4})`);
+    const txt = lblG.append("text").attr("class", "threshold-label")
+      .text(`enter < ${enterBelow.toFixed(4)} €/kWh`);
     const bb = txt.node().getBBox();
     lblG.insert("rect", "text")
       .attr("class", "threshold-label-bg")
