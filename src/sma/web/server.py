@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -172,11 +173,9 @@ class _Cache:
     ttl_s: float = 300.0
 
     def stale(self) -> bool:
-        import time
         return (time.monotonic() - self.fetched_at) > self.ttl_s
 
     def store(self, value: object) -> None:
-        import time
         self.value = value
         self.fetched_at = time.monotonic()
 
@@ -312,7 +311,7 @@ def run_one_tick(s: AppState) -> None:
     # consider the loadpoint engaged for LOADPOINT_GRACE_S afterward. Once that
     # window expires (e.g. EV is full and connected but won't absorb more), we
     # fall back to match-load curtailment instead of permanently releasing.
-    now_mono = _time.monotonic()
+    now_mono = time.monotonic()
     lp_connected = snap.any_loadpoint_connected if snap else False
     lp_active_w  = snap.active_loadpoint_charge_power_w if snap else 0.0
     just_connected   = lp_connected and not s.last_loadpoint_connected
@@ -336,7 +335,6 @@ def run_one_tick(s: AppState) -> None:
         # Pass last applied target so the deadband can hold steady through small home-w jitter.
         last_target_percent=s.last_written_percent,
     )
-    import time as _time
     prev_target = s.last_decision.target_percent if s.last_decision is not None else None
     decision = decide(s.curtailed, inputs, s.policy)
 
@@ -345,14 +343,14 @@ def run_one_tick(s: AppState) -> None:
     write_ok = True
     if p.actuator is not None:
         target_changed = decision.target_percent != s.last_written_percent
-        heartbeat_due = (_time.monotonic() - s.last_write_monotonic) >= s.config.modbus_heartbeat_seconds
+        heartbeat_due = (time.monotonic() - s.last_write_monotonic) >= s.config.modbus_heartbeat_seconds
         if target_changed or heartbeat_due:
             write_ok = _safe_call(p.actuator.set_percent, "modbus write", decision.target_percent)
             if write_ok:
                 reason = "change" if target_changed else "heartbeat"
                 log.info("wrote %d%% to inverter (%s)", decision.target_percent, reason)
                 s.last_written_percent = decision.target_percent
-                s.last_write_monotonic = _time.monotonic()
+                s.last_write_monotonic = time.monotonic()
             else:
                 try: p.inverter and p.inverter.__exit__(None, None, None)
                 except Exception: pass  # noqa: BLE001, S110
@@ -366,7 +364,7 @@ def run_one_tick(s: AppState) -> None:
     # above target with no recent successful write is just "we can't write".
     wrote_recently = (
         s.last_written_percent is not None
-        and (_time.monotonic() - s.last_write_monotonic) < 120
+        and (time.monotonic() - s.last_write_monotonic) < 120
     )
     if (decision.curtail and wrote_recently and p.actuator is not None
             and pv_now is not None and pv_now > decision.target_watts + 200):
