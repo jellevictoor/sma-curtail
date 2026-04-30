@@ -123,18 +123,18 @@ function renderState(state) {
     const dp = a >= 1 ? 2 : a >= 0.1 ? 3 : 4;
     return `${v >= 0 ? "+" : ""}${Number(v).toFixed(dp)} €`;
   };
-  // Curtailment net profit
+  // Money-flow perspective: signed from the user's POV.
+  //   negative = out of your pocket, positive = into your pocket.
+  //   line totals = sum of their parts (no sign-flips between headline and detail).
+  // Curtailment effect: saved (avoided cost) is +, lost (forced import) is −.
   document.getElementById("m-saved").textContent = eur(m.saved_eur);
   document.getElementById("m-lost").textContent  = eur(-Math.abs(m.lost_eur || 0));
-  const net = document.getElementById("m-net");
-  net.textContent = eur(m.net_eur);
-  net.className = `num ${(m.net_eur || 0) >= 0 ? "text-produce" : "text-curtail"}`;
-  // Household grid bill: cost − revenue. Positive bill = you paid the grid.
+  document.getElementById("m-net").textContent   = eur(m.net_eur);
+  // Grid: cost (import) is −, earn (export revenue) is +. Server's bill_eur is
+  // cost − revenue (positive = paid grid); flip it so the column is sign-honest.
   document.getElementById("m-cost").textContent = eur(-Math.abs(m.cost_eur || 0));
   document.getElementById("m-earn").textContent = eur(m.revenue_eur);
-  const bill = document.getElementById("m-bill");
-  bill.textContent = eur(m.bill_eur);
-  bill.className = `num ${(m.bill_eur || 0) <= 0 ? "text-produce" : "text-curtail"}`;
+  document.getElementById("m-bill").textContent = eur(-Number(m.bill_eur || 0));
 }
 
 // --- energy bar (evcc-style) ----------------------------------------------

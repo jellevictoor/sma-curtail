@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sma-curtail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   // Boot theme as early as possible to avoid a flash of wrong colors.
@@ -61,15 +64,20 @@
   html, body { background: var(--bg-app); }
   body {
     color: var(--text-primary);
-    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
-    font-feature-settings: "ss01", "cv01";
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11";  /* IBM Plex single-storey 'a' alternate */
+  }
+  pre, code, .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   ::selection { background: var(--selection); }
 
   /* --- semantic utility classes ----------------------------------------- */
   .panel    { background: var(--bg-panel); border: 1px solid var(--border); }
-  .panel-h  { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-  .num      { font-variant-numeric: tabular-nums; }
+  .panel-h  { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 500; }
+  .num      { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
   .text-pri { color: var(--text-primary); }
   .text-sec { color: var(--text-secondary); }
   .text-muted-s { color: var(--text-muted); }
@@ -341,15 +349,15 @@ consumption = 1.02 · <span id="pm-c-epex2" class="text-epex">—</span> + 0.131
       <dl class="space-y-1 text-sm">
         <div class="flex justify-between border-b border-base pb-1">
           <dt class="text-sec">injection (net)</dt>
-          <dd class="num text-price"><span id="m-price">—</span></dd>
+          <dd class="num text-pri"><span id="m-price">—</span></dd>
         </div>
         <div class="flex justify-between border-b border-base pb-1">
           <dt class="text-sec">consumption</dt>
-          <dd class="num text-consumption"><span id="p-consumption">—</span></dd>
+          <dd class="num text-pri"><span id="p-consumption">—</span></dd>
         </div>
         <div class="flex justify-between border-b border-base pb-1">
           <dt class="text-sec">EPEX day-ahead</dt>
-          <dd class="num text-epex"><span id="p-epex">—</span></dd>
+          <dd class="num text-pri"><span id="p-epex">—</span></dd>
         </div>
         <div class="flex justify-between border-b border-base pb-1">
           <dt class="text-sec">break-even EPEX</dt>
@@ -357,25 +365,25 @@ consumption = 1.02 · <span id="pm-c-epex2" class="text-epex">—</span> + 0.131
         </div>
         <div class="flex justify-between border-b border-base pb-1">
           <dt class="text-sec">forecast curtail ahead</dt>
-          <dd class="num text-curtail"><span id="p-curtail-hours">—</span></dd>
+          <dd class="num text-pri"><span id="p-curtail-hours">—</span></dd>
         </div>
         <div class="flex justify-between border-b border-base pb-1">
-          <dt class="text-sec">today · grid bill</dt>
+          <dt class="text-sec">today · grid €</dt>
           <dd class="num">
             <span id="m-bill" class="text-pri">—</span>
             <span class="text-[10px] text-muted-s ml-1">
-              (cost <span id="m-cost" class="num text-curtail">—</span> ·
-              earn <span id="m-earn" class="num text-produce">—</span>)
+              (cost <span id="m-cost" class="num text-muted-s">—</span> ·
+              earn <span id="m-earn" class="num text-muted-s">—</span>)
             </span>
           </dd>
         </div>
         <div class="flex justify-between">
-          <dt class="text-sec">today · curtail net profit</dt>
+          <dt class="text-sec">today · curtail €</dt>
           <dd class="num">
             <span id="m-net" class="text-pri">—</span>
             <span class="text-[10px] text-muted-s ml-1">
-              (saved <span id="m-saved" class="num text-produce">—</span> ·
-              lost <span id="m-lost" class="num text-curtail">—</span>)
+              (saved <span id="m-saved" class="num text-muted-s">—</span> ·
+              lost <span id="m-lost" class="num text-muted-s">—</span>)
             </span>
           </dd>
         </div>
