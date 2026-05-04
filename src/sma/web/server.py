@@ -339,8 +339,14 @@ def run_one_tick(s: AppState) -> None:
 
     # Write only when the target actually changes, or to refresh the inverter
     # watchdog at the configured heartbeat interval. Massively reduces wear.
+    # Skip writes entirely when the inverter is asleep (PV below threshold):
+    # SMA rejects active-power-limit writes with IllegalValue when there's no
+    # active feed-in, and the watchdog reverts to the fallback overnight anyway.
     write_ok = True
-    if p.actuator is not None:
+    inverter_awake = pv_now is not None and pv_now >= s.policy.pv_active_threshold_w
+    if p.actuator is None:
+        write_ok = False  # no inverter → can't actually curtail
+    elif inverter_awake:
         target_changed = decision.target_percent != s.last_written_percent
         heartbeat_due = (time.monotonic() - s.last_write_monotonic) >= s.config.modbus_heartbeat_seconds
         if target_changed or heartbeat_due:
@@ -350,13 +356,6 @@ def run_one_tick(s: AppState) -> None:
                 log.info("wrote %d%% to inverter (%s)", decision.target_percent, reason)
                 s.last_written_percent = decision.target_percent
                 s.last_write_monotonic = time.monotonic()
-            else:
-                try: p.inverter and p.inverter.__exit__(None, None, None)
-                except Exception: pass  # noqa: BLE001, S110
-                p.inverter = None
-                p.actuator = None
-    else:
-        write_ok = False  # no inverter → can't actually curtail
     new_state = decision.curtail if write_ok else s.curtailed
 
     # Sanity-check: only meaningful when we actually wrote something. PV well
