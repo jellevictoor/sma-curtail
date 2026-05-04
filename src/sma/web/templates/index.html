@@ -103,6 +103,7 @@
   .zero-line      { stroke: var(--border); stroke-dasharray: 3,3; }
   .line-pv        { stroke: var(--accent-pv);    fill: none; stroke-width: 1.75; }
   .line-grid      { stroke: var(--accent-grid);  fill: none; stroke-width: 1.75; }
+  .line-cap       { stroke: var(--accent-curtail); fill: none; stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.9; }
   .line-injection { stroke: var(--accent-price); fill: none; stroke-width: 1.75; }
   .line-consumption{stroke: var(--accent-consumption); fill: none; stroke-width: 1.5; opacity: 0.85; }
   .line-epex      { stroke: var(--accent-epex);  fill: none; stroke-width: 1.25; opacity: 0.85; }
@@ -421,6 +422,7 @@ consumption = 1.02 · <span id="pm-c-epex2" class="text-epex">—</span> + 0.131
         <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-pv)"></span>PV W</span>
         <span><span class="inline-block w-3 h-0 align-middle mr-1" style="border-top: 2px dashed var(--accent-pv); opacity: 0.7"></span>PV forecast</span>
         <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--accent-grid)"></span>grid W (− = export)</span>
+        <span><span class="inline-block w-3 h-0 align-middle mr-1" style="border-top: 2px dashed var(--accent-curtail); opacity: 0.9"></span>cap (target W)</span>
         <span><span class="inline-block w-2 h-2 align-middle mr-1" style="background: var(--text-muted); opacity: 0.4"></span>actually curtailed</span>
       </div>
     </div>

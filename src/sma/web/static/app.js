@@ -201,14 +201,15 @@ function renderPowerChart(samples) {
 
   const live = samples.map(s => ({
     t: new Date(s.timestamp), pv: s.pv_power_w, grid: s.grid_power_w,
-    curtail: s.curtail, source: "live",
+    curtail: s.curtail, target_percent: s.target_percent, target_watts: s.target_watts,
+    source: "live",
   }));
   const earliestLive = live.length ? live[0].t.getTime() : Infinity;
   const past = pastGrid
     .filter(p => new Date(p.timestamp).getTime() < earliestLive)
     .map(p => ({
       t: new Date(p.timestamp), pv: null, grid: p.grid_power_w,
-      curtail: false, source: "past",
+      curtail: false, target_percent: null, target_watts: null, source: "past",
     }));
   const data = [...past, ...live];
   if (!data.length) return;
@@ -266,6 +267,15 @@ function renderPowerChart(samples) {
   g.append("path").datum(data).attr("class", "line-pv")   .attr("d", line(d => d.pv));
   g.append("path").datum(data).attr("class", "line-grid") .attr("d", line(d => d.grid));
 
+  // Curtailment cap as a step line in watts. Only drawn while a real limit
+  // applied (target_percent < 100); rendered with stepAfter so a constant
+  // setpoint shows as a flat ceiling and changes show as discrete jumps.
+  const capLine = d3.line()
+    .defined(d => d.target_percent != null && d.target_percent < 100 && d.target_watts != null)
+    .x(d => x(d.t)).y(d => yPower(d.target_watts))
+    .curve(d3.curveStepAfter);
+  g.append("path").datum(data).attr("class", "line-cap").attr("d", capLine);
+
   // Solar forecast (future side, dashed PV-coloured line)
   const fcData = (solarForecast || [])
     .map(p => ({ t: new Date(p.timestamp), pv: p.pv_power_w }))
@@ -293,9 +303,11 @@ function renderPowerChart(samples) {
       const dir = d.grid == null ? "—"
                 : d.grid < 0 ? `<span class="num">exporting ${(-d.grid).toFixed(0)} W</span>`
                 : `<span class="num">importing ${d.grid.toFixed(0)} W</span>`;
-      const status = d.curtail
-        ? `<span class="text-curtail">curtailed (0%)</span>`
-        : `<span class="text-produce">producing (100%)</span>`;
+      const status = d.target_percent == null
+        ? `<span class="text-muted-s">—</span>`
+        : d.target_percent < 100
+          ? `<span class="text-curtail">limited to ${d.target_percent}% (≤${d.target_watts} W)</span>`
+          : `<span class="text-produce">producing (100% — no cap)</span>`;
       const src = d.source === "past" ? `<span class="text-muted-s">(meter)</span>` : "";
       return `
         <div class="text-muted-s num">${d.t.toLocaleString()} ${src}</div>
