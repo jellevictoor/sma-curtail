@@ -27,6 +27,7 @@ class Config:
 
     log_level: str
     web_port: int
+    state_dir: str
     fluvius_region: str
     modbus_heartbeat_seconds: int
     home_power_ema_alpha: float
@@ -63,6 +64,10 @@ class Config:
             exit_above_eur_kwh=float(_get("EXIT_ABOVE_EUR_KWH", "0.005")),
             log_level=_get("LOG_LEVEL", "INFO"),
             web_port=int(_get("WEB_PORT", "8080")),
+            # Durable on-disk state (connection-event log). Relative to CWD so it
+            # resolves to /app/data inside the container (WORKDIR=/app, where a
+            # named volume is mounted) and ./data in local dev.
+            state_dir=_get("STATE_DIR", "data"),
             fluvius_region=_get("FLUVIUS_REGION", "WEST"),
             # Inverter watchdog is 600 s; 300 s gives 2× margin and minimises writes.
             modbus_heartbeat_seconds=int(_get("MODBUS_HEARTBEAT_SECONDS", "300")),

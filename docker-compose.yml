@@ -10,6 +10,10 @@ services:
     env_file: .env
     ports:
       - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
+    # Durable connection-event log (SQLite). Survives container recreation so the
+    # outage history isn't wiped by the very restarts it's meant to make rare.
+    volumes:
+      - sma-data:/app/data
     # If you ever deploy this on the SAME Linux host as Traefik (i.e., on the
     # box that's actually serving evcc.victoor.io / influx.victoor.io / etc.),
     # uncomment + set TRAEFIK_HOST in .env to the host's LAN IP. That lets the
@@ -23,3 +27,6 @@ services:
     #  - "evcc.victoor.io:${TRAEFIK_HOST}"
     #  - "influx.victoor.io:${TRAEFIK_HOST}"
     #  - "mqtt.victoor.io:${TRAEFIK_HOST}"
+
+volumes:
+  sma-data:

@@ -549,6 +549,7 @@ function contiguousBands(data, pred) {
 async function refreshState()    { try { renderState(await fetchJSON("/api/state")); } catch (e) { console.warn(e); } }
 async function refreshHistory()  { try { renderPowerChart((await fetchJSON("/api/history")).samples); } catch (e) { console.warn(e); } }
 async function refreshLog()      { try { renderLog((await fetchJSON("/api/log")).entries); } catch (e) { console.warn(e); } }
+async function refreshConnEvents() { try { renderConnectionEvents(await fetchJSON("/api/connection_events")); } catch (e) { console.warn(e); } }
 
 function renderLog(entries) {
   const ul = document.getElementById("log");
@@ -576,6 +577,51 @@ function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
+// --- inverter connection health --------------------------------------------
+
+function renderConnectionEvents(data) {
+  const summaryEl = document.getElementById("conn-summary");
+  const ul = document.getElementById("conn-events");
+  if (!summaryEl || !ul) return;
+
+  const s = data.summary || {};
+  const losses = s.losses_in_window ?? 0;
+  const down = s.last_kind === "lost";
+  // Summary line: zero losses = quietly healthy; otherwise show the count and
+  // whether we're currently down (last event was a loss) or recovered.
+  if (s.last_kind == null) {
+    summaryEl.textContent = "no losses recorded";
+    summaryEl.className = "normal-case text-produce";
+  } else {
+    const state = down ? "DOWN — reconnecting each tick" : "connected";
+    summaryEl.innerHTML =
+      `<span class="${down ? "text-curtail" : "text-produce"} font-semibold">${state}</span>` +
+      ` · ${losses} ${losses === 1 ? "loss" : "losses"} in 24h`;
+    summaryEl.className = "normal-case";
+  }
+
+  const events = data.events || [];
+  ul.innerHTML = "";
+  if (!events.length) {
+    const li = document.createElement("li");
+    li.className = "text-muted-s";
+    li.textContent = "no connection events logged";
+    ul.appendChild(li);
+    return;
+  }
+  for (const e of events) {
+    const li = document.createElement("li");
+    const t = new Date(e.timestamp).toLocaleString();
+    const lost = e.kind === "lost";
+    li.className = "flex items-baseline gap-2 num";
+    li.innerHTML = `
+      <span class="text-muted-s shrink-0 w-36">${t}</span>
+      <span class="${lost ? "text-curtail" : "text-produce"} font-semibold shrink-0 w-24">${lost ? "✗ lost" : "✓ reconnected"}</span>
+      <span class="text-sec flex-1">${escapeHTML(e.detail || "")}</span>`;
+    ul.appendChild(li);
+  }
+}
 async function refreshPastGrid() {
   try { pastGrid = (await fetchJSON("/api/power_history")).points || []; refreshHistory(); }
   catch (e) { console.warn(e); }
@@ -591,9 +637,11 @@ async function refreshPrices()   {
 
 initTheme();
 refreshState(); refreshHistory(); refreshPrices(); refreshPastGrid(); refreshForecast(); refreshLog();
+refreshConnEvents();
 setInterval(refreshState, 5000);
 setInterval(refreshHistory, 15000);
 setInterval(refreshLog, 5000);
+setInterval(refreshConnEvents, 15000);
 setInterval(refreshPrices, 5 * 60 * 1000);
 setInterval(refreshPastGrid, 5 * 60 * 1000);
 setInterval(refreshForecast, 30 * 60 * 1000);

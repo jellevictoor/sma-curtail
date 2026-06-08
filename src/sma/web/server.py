@@ -24,6 +24,11 @@ from starlette.requests import Request
 
 from sma.adapters.influx_metering import GridPoint, InfluxMeteringProvider
 from sma.adapters.influx_price import InfluxPriceProvider, PricePoint
+from sma.adapters.connection_events import (
+    LOST,
+    RECONNECTED,
+    ConnectionEventStore,
+)
 from sma.adapters.influx_writer import InfluxSampleWriter
 from sma.adapters.modbus_actuator import ModbusActuator
 from sma.adapters.mqtt_publisher import MQTTPublisher
@@ -67,6 +72,7 @@ class Providers:
     prices: InfluxPriceProvider
     metering: InfluxMeteringProvider
     writer: InfluxSampleWriter
+    events: ConnectionEventStore
     evcc: EvccMCPClient | None
     inverter: SMAModbusClient | None
     actuator: ModbusActuator | None
@@ -86,7 +92,7 @@ class Providers:
             except Exception: pass  # noqa: BLE001, S110
 
     def try_connect_inverter(self, config: Config) -> None:
-        """Re-attempt the Modbus connection."""
+        """Re-attempt the Modbus connection (only called while disconnected)."""
         try:
             inv = SMAModbusClient(
                 config.inverter_host, config.inverter_port, config.inverter_unit_id,
@@ -96,8 +102,28 @@ class Providers:
             self.actuator = ModbusActuator(inv)
             log.info("inverter reconnected at %s:%s (%s)",
                      config.inverter_host, config.inverter_port, config.inverter_transport)
+            self.events.record("inverter", RECONNECTED,
+                               f"{config.inverter_host}:{config.inverter_port} ({config.inverter_transport})")
         except Exception as exc:  # noqa: BLE001
             log.debug("inverter still unreachable: %s", exc)
+
+    def drop_inverter(self, reason: str) -> None:
+        """Tear down a wedged Modbus client so the next tick reconnects from scratch.
+
+        The SMA TCP server can hang while the socket still reads as ESTABLISHED;
+        reads/writes then time out forever. Fully closing and recreating the
+        client is what a manual container restart used to do — now automatic.
+        """
+        if self.inverter is None:
+            return
+        log.warning("inverter connection lost — dropping client (%s)", reason)
+        try:
+            self.inverter.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001, S110
+            pass
+        self.inverter = None
+        self.actuator = None
+        self.events.record("inverter", LOST, reason)
 
     def try_connect_evcc(self, config: Config) -> None:
         """Re-attempt the evcc MCP connection."""
@@ -108,7 +134,7 @@ class Providers:
             log.debug("evcc still unreachable: %s", exc)
 
 
-def _build_providers(config: Config) -> Providers:
+def _build_providers(config: Config, events: ConnectionEventStore) -> Providers:
     influx = InfluxDBClient(url=config.influx_url, token=config.influx_token, org=config.influx_org)
     prices = InfluxPriceProvider(influx, config.influx_org, config.influx_bucket)
     metering = InfluxMeteringProvider(influx, config.influx_org, config.influx_metering_bucket)
@@ -136,6 +162,7 @@ def _build_providers(config: Config) -> Providers:
                  config.inverter_host, config.inverter_port, config.inverter_transport)
     except Exception as exc:  # noqa: BLE001
         log.warning("inverter unreachable (%s) — running observe-only; will retry each tick", exc)
+        events.record("inverter", LOST, f"unreachable at startup: {exc}")
 
     mqtt: MQTTPublisher | None = None
     if config.mqtt_host:
@@ -158,7 +185,7 @@ def _build_providers(config: Config) -> Providers:
             dec=config.solar_dec, az=config.solar_az, kwp=config.solar_kwp,
         )
 
-    return Providers(influx, prices, metering, writer, evcc, inv, actuator,
+    return Providers(influx, prices, metering, writer, events, evcc, inv, actuator,
                      mqtt=mqtt, solar=solar)
 
 
@@ -184,6 +211,7 @@ class AppState:
     config: Config
     policy: CurtailmentPolicy
     region: FluviusRegion
+    events: ConnectionEventStore
     history: History = field(default_factory=History)
     log_buffer: LogBuffer = field(default_factory=LogBuffer)
     last_written_percent: int | None = None
@@ -223,6 +251,7 @@ class AppState:
                 target_deadband_percent=config.target_deadband_percent,
             ),
             region=FluviusRegion[config.fluvius_region],
+            events=ConnectionEventStore(Path(config.state_dir) / "sma.db"),
         )
 
     def commit(self, sample: Sample, decision: Decision, new_state: bool) -> None:
@@ -356,6 +385,11 @@ def run_one_tick(s: AppState) -> None:
                 log.info("wrote %d%% to inverter (%s)", decision.target_percent, reason)
                 s.last_written_percent = decision.target_percent
                 s.last_write_monotonic = time.monotonic()
+            else:
+                # A failed write means the Modbus link is wedged (the SMA TCP
+                # server hangs on a still-"open" socket). Drop the stale client;
+                # try_connect_inverter heals it on the next tick.
+                p.drop_inverter(f"modbus write of {decision.target_percent}% failed")
     new_state = decision.curtail if write_ok else s.curtailed
 
     # Sanity-check: only meaningful when we actually wrote something. PV well
@@ -532,7 +566,7 @@ async def tick_loop(s: AppState) -> None:
 
 
 async def _run_until_failure(s: AppState) -> None:
-    s.providers = await asyncio.to_thread(_build_providers, s.config)
+    s.providers = await asyncio.to_thread(_build_providers, s.config, s.events)
     # Seed the ring buffer with today's persisted samples so money_today
     # survives restarts (we've been writing them every tick to Influx).
     await asyncio.to_thread(_seed_history, s)
@@ -646,6 +680,17 @@ async def api_log(request: Request):
     entries = _state(request).log_buffer.snapshot()
     return JSONResponse({
         "entries": [asdict(e) for e in entries[-100:]],
+    })
+
+
+@app.get("/api/connection_events")
+async def api_connection_events(request: Request):
+    s = _state(request)
+    events = await asyncio.to_thread(s.events.recent, 100)
+    summary = await asyncio.to_thread(s.events.summary, "inverter", 24)
+    return JSONResponse({
+        "summary": summary,
+        "events": [asdict(e) for e in events],
     })
 
 

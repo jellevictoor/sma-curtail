@@ -48,7 +48,7 @@ def test_app_imports_and_routes_present():
     # Don't actually start the lifespan (it would try to reach real services).
     from sma.web.server import app
     paths = {route.path for route in app.routes}
-    for needed in ("/", "/api/state", "/api/history", "/static"):
+    for needed in ("/", "/api/state", "/api/history", "/api/connection_events", "/static"):
         assert any(p == needed or p.startswith(needed) for p in paths), f"missing {needed}"
 
 

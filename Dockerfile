@@ -16,6 +16,10 @@ RUN groupadd --system --gid 1000 app \
 
 WORKDIR /app
 
+# Durable state dir (SQLite connection-event log). Created app-owned so the
+# named volume mounted here inherits that ownership on first init.
+RUN mkdir -p /app/data && chown app:app /app/data
+
 # Dependency layer — cached until pyproject or lockfile changes.
 COPY --chown=app:app pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev

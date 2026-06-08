@@ -21,6 +21,9 @@ venv/
 # Local agent state
 .claude/
 
+# Durable runtime state (SQLite connection-event log)
+/data/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
