@@ -37,7 +37,7 @@ from sma.client import SMAModbusClient
 from sma.config import Config
 from sma.curtailment import CurtailmentInputs, CurtailmentPolicy, Decision, decide
 from sma.ecopower import FluviusRegion, break_even_epex_eur_mwh
-from sma.evcc import EvccMCPClient, EvccSnapshot
+from sma.evcc import EvccClient, EvccSnapshot
 from sma.web.state import (
     AppLogHandler,
     History,
@@ -73,7 +73,7 @@ class Providers:
     metering: InfluxMeteringProvider
     writer: InfluxSampleWriter
     events: ConnectionEventStore
-    evcc: EvccMCPClient | None
+    evcc: EvccClient | None
     inverter: SMAModbusClient | None
     actuator: ModbusActuator | None
     mqtt: MQTTPublisher | None = None
@@ -126,10 +126,10 @@ class Providers:
         self.events.record("inverter", LOST, reason)
 
     def try_connect_evcc(self, config: Config) -> None:
-        """Re-attempt the evcc MCP connection."""
+        """Re-attempt the evcc connection."""
         try:
-            self.evcc = EvccMCPClient(config.evcc_mcp_url).__enter__()
-            log.info("evcc reconnected at %s", config.evcc_mcp_url)
+            self.evcc = EvccClient(config.evcc_url).__enter__()
+            log.info("evcc reconnected at %s", config.evcc_url)
         except Exception as exc:  # noqa: BLE001
             log.debug("evcc still unreachable: %s", exc)
 
@@ -141,10 +141,10 @@ def _build_providers(config: Config, events: ConnectionEventStore) -> Providers:
     writer = InfluxSampleWriter(influx, config.influx_org, config.influx_metering_bucket)
 
     # evcc — optional. If unreachable at boot, daemon still starts; we retry every tick.
-    evcc: EvccMCPClient | None = None
+    evcc: EvccClient | None = None
     try:
-        evcc = EvccMCPClient(config.evcc_mcp_url).__enter__()
-        log.info("evcc connected at %s", config.evcc_mcp_url)
+        evcc = EvccClient(config.evcc_url).__enter__()
+        log.info("evcc connected at %s", config.evcc_url)
     except Exception as exc:  # noqa: BLE001
         log.warning("evcc unreachable (%s) — running without evcc data; will retry each tick", exc)
 

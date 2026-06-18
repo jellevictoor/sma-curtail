@@ -19,7 +19,7 @@ class Config:
     influx_bucket: str
     influx_metering_bucket: str
 
-    evcc_mcp_url: str
+    evcc_url: str
 
     tick_seconds: int
     enter_below_eur_kwh: float
@@ -58,7 +58,7 @@ class Config:
             influx_org=_get("INFLUX_ORG", "victoor.io"),
             influx_bucket=_get("INFLUX_BUCKET", "energy_prices"),
             influx_metering_bucket=_get("INFLUX_METERING_BUCKET", "metering"),
-            evcc_mcp_url=_get("EVCC_MCP_URL", "https://evcc.victoor.io/mcp"),
+            evcc_url=_get("EVCC_URL", "https://evcc.victoor.io"),
             tick_seconds=int(_get("TICK_SECONDS", "15")),
             enter_below_eur_kwh=float(_get("ENTER_BELOW_EUR_KWH", "-0.001")),
             exit_above_eur_kwh=float(_get("EXIT_ABOVE_EUR_KWH", "0.005")),

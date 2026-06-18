@@ -20,20 +20,19 @@ class EvccSnapshot:
     any_loadpoint_charging: bool
 
 
-class EvccMCPClient:
-    """Minimal MCP-over-HTTP client for evcc's getState tool."""
+class EvccClient:
+    """Reads evcc state over its native REST API (`GET /api/state`)."""
 
     def __init__(self, base_url: str, timeout: float = 10.0):
-        self._url = base_url.rstrip("/")
+        self._url = base_url.rstrip("/") + "/api/state"
         self._timeout = timeout
-        self._sid: str | None = None
 
-    def __enter__(self) -> EvccMCPClient:
-        self._initialize()
+    def __enter__(self) -> EvccClient:
+        self.snapshot()  # fail fast if unreachable, mirroring the old MCP handshake
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self._sid = None  # MCP HTTP sessions self-expire; nothing to close.
+        return None
 
     def snapshot(self) -> EvccSnapshot:
         # We need three things per loadpoint:
@@ -49,15 +48,7 @@ class EvccMCPClient:
         # actively charging OR is connected in a surplus-absorbing mode (i.e.,
         # would charge if PV surplus were exposed to evcc). This avoids the
         # catch-22 where curtailing hides the surplus and evcc never starts.
-        jq = (
-            "{tariffFeedIn, tariffGrid, pvPower, homePower, gridPower, "
-            "loadpoints: [.loadpoints[] | {mode, charging: (.charging // false), "
-            "connected: (.connected // false), chargePower: (.chargePower // 0)}]}"
-        )
-        result = self._call_tool("getState", {"jq": jq})
-        text = result["content"][0]["text"]
-        body = text.split("Response:\n", 1)[1] if "Response:\n" in text else text
-        state = json.loads(body)
+        state = self._get_state()
 
         loadpoints = state.get("loadpoints") or []
         unmanaged_load_w = sum(
@@ -83,43 +74,7 @@ class EvccMCPClient:
             any_loadpoint_charging=active_w > 0,
         )
 
-    def _initialize(self) -> None:
-        body = {
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "sma-curtail", "version": "0.1"},
-            },
-        }
-        sid, _ = self._post(body, sid=None)
-        if not sid:
-            raise RuntimeError(f"evcc MCP at {self._url} did not return a session id")
-        self._sid = sid
-        # MCP requires the initialized notification before further calls
-        self._post({"jsonrpc": "2.0", "method": "notifications/initialized"}, sid)
-
-    def _call_tool(self, name: str, arguments: dict) -> dict:
-        if self._sid is None:
-            raise RuntimeError("not initialized")
-        body = {
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": name, "arguments": arguments},
-        }
-        _, raw = self._post(body, self._sid)
-        for line in raw.splitlines():
-            if line.startswith("data: "):
-                payload = json.loads(line[6:])
-                if "error" in payload:
-                    raise RuntimeError(f"evcc MCP error: {payload['error']}")
-                return payload["result"]
-        raise RuntimeError(f"evcc MCP: no SSE data line in response: {raw!r}")
-
-    def _post(self, body: dict, sid: str | None) -> tuple[str | None, str]:
-        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-        if sid:
-            headers["mcp-session-id"] = sid
-        req = urllib.request.Request(self._url, data=json.dumps(body).encode(),
-                                     method="POST", headers=headers)
+    def _get_state(self) -> dict:
+        req = urllib.request.Request(self._url, method="GET")
         with urllib.request.urlopen(req, timeout=self._timeout) as r:
-            return r.headers.get("mcp-session-id"), r.read().decode(errors="replace")
+            return json.loads(r.read().decode(errors="replace"))
